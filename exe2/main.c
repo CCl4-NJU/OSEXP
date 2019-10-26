@@ -1,104 +1,32 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
+#include "func.c"
+#include "check.c"
 
-typedef unsigned char b1; // 1 byte
-typedef unsigned short b2; // 2 bytes
-typedef unsigned char b3[3]; // 3 bytes
-typedef unsigned int b4; // 4 bytes
-typedef double b8; // 8 bytes
-typedef unsigned char b10[10]; // 10 bytes
-typedef unsigned char b11[11]; // 11 bytes
-
-#pragma pack (1)
-
-struct {
-    b3 BS_jmpBOOT;
-    b8 BS_OEMName;
-    b2 BPB_BytesPerSec;
-    b1 BPB_SecPerClus;
-    b2 BPB_ResvdSecCnt;
-    b1 BPB_NumFATs;
-    b2 BPB_RootEntCnt;
-    b2 BPB_TotSec16;
-    b1 BPB_Media;
-    b2 BPB_FATSz16;
-    b2 BPB_NumHeads;
-    b4 BPB_HiddSec;
-    b4 BPB_TotSec32;
-    b1 BS_DrvNum;
-    b1 BS_Reserved1;
-    b1 BS_BootSig;
-    b1 BS_VollD;
-    b11 BS_VolLab;
-    b8 BS_FileSysType;
-} BSB;
-
-struct {
-    b11 DIR_Name;
-    b1 DIR_Attr;
-    b10 DIR_Reserved;
-    b2 DIR_WrtTime;
-    b2 DIR_WrtDate;
-    b2 DIR_FstClus;
-    b4 DIR_FileSize;
-} DIR;
-
-#pragma pack ()
+//int startByte = dataBase + (currentClus - 2)*SecPerClus*BytsPerSec;
 // physical sector number = 33 + FAT entry number - 2
 
-char WARNING_INVALID_COMMAND[] = {"Command entered invalid!\n"};
 char DEFAULT_PATH[] = {"defaultpath"};
 
-// should check if the file is a dir
-void handleCat(const char * filename){
-    printf("cat function\n");
-    printf("filename: %s\n", filename);
-}
-
-// should check if the file is a dir
-void handleLs(const char * filename){
-    printf("ls function without -l\n");
-    printf("filename: %s\n", filename);
-}
-
-// should check if the file is a dir
-void handleLsWithParam(const char * filename){
-    printf("ls function with -l\n");
-    printf("filename: %s\n", filename);
-}
-
-void invalidCmdWarning(const char * cmd){
-    printf("%s",WARNING_INVALID_COMMAND);
-    printf("You entered: %s", cmd);
-}
-
-void invalidParamForLs(const char * param){
-    printf("Your param for ls command is invalid!\n");
-    printf("You entered %s\n", param);
-}
-
-void invalidFilename(const char * filename){
-    printf("Your filename input is invalid!\n");
-    printf("You entered %s\n", filename);
-}
-
-bool isFilenameHead(char c){
-    return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 112) 
-    || (c == '.') || (c == '/');
-}
-
 int main(){
+
+    // load img
+    FILE * FAT12;
+    FAT12 = fopen("a.img", "rb");
+    struct BPB bpb;
+    struct BPB * bpb_ptr = &bpb;
+    struct DIR rootEntry;
+    struct DIR * rootEntry_ptr = &rootEntry;
+
+    loadFAT12(FAT12, bpb_ptr);
+
     char prompt[] = {"Please enter your command:\n"};
-    char input[1024];
+    char input[128];
     printf("%s", prompt);
-    fgets(input, 1023, stdin);
+    fgets(input, 127, stdin);
     while(strcmp(input, "exit\n")!=0){
         //use another variable to hold input, which makes code more understandable
-        char command[1024];
-        char filename[1024] = {};
-        char param[1024] = {};
+        char command[128];
+        char filename[128] = {};
+        char param[128] = {};
         strcpy(command, input);
 
         //pre-process the input, and detect undefined command
@@ -143,7 +71,12 @@ int main(){
         }
 
         if(strcmp(commandType, "cat")==0){
-            handleCat(filename);
+            if(strcmp(filename, DEFAULT_PATH)==0){
+                printf("Please enter a file name!\n");
+            }
+            else{
+                handleCat(filename, FAT12, rootEntry_ptr);
+            }
         }
         else if(strcmp(commandType, "ls")==0){
             //check if there are filepath and param
@@ -179,7 +112,7 @@ int main(){
         }
 
         printf("%s", prompt);
-        fgets(input, 1023, stdin);
+        fgets(input, 127, stdin);
     }
 
     return 0;
