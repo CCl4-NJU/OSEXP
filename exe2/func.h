@@ -10,7 +10,7 @@ void loadFAT12(FILE * FAT12, struct BPB * bpb_ptr);
 void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr);
 
 // should check if the file is a dir
-void handleLs(const char * filename);
+void handleLs(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr);
 
 // should check if the file is a dir
 void handleLsWithParam(const char * filename);

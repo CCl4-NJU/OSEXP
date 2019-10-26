@@ -420,11 +420,374 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
 
 //-----------------------------------------------------------------------------------
 
-// should check if the file is a dir
-void handleLs(const char * filename){
-    printf("ls function without -l\n");
-    printf("filename: %s\n", filename);
+
+void printRecurse(int startclus, FILE * FAT12, char * parent){
+    printf("%s:\n",parent);
+    //red here!!!!!!!!!!!!!!!!!!!!!!!
+    printf(".  ..  ");
+
+    //as in handleLs, create arr to store dirs and clus
+    int dictind = 0;
+    char * subdirs[224] = {};
+    int subclus[224] = {};
+
+    int dataBase = DataBase;
+    int currentClus = startclus;
+    int val = 0;
+    while(val < 0xFF8){
+        val = getFATValue(FAT12, currentClus);
+        if(val == 0xFF7){
+            printf("Encountered bad clus!\n");
+            return;
+        }
+        char * str = (char*)malloc(SecPerClus*BytesPerSec);
+        char* content = str;
+
+        int startByte = dataBase + (currentClus - 2)*SecPerClus*BytesPerSec;
+        fseek(FAT12, startByte, SEEK_SET);
+        fread(content,1,SecPerClus*BytesPerSec,FAT12);
+
+        int count = SecPerClus*BytesPerSec;
+        int loop=0;
+        while(loop<count){
+            char tempName[12] = {};
+            if(content[loop]=='\0'){
+                loop+=32;
+                continue;
+            }
+            int boolean=0;
+            for(int j=loop; j<loop+11; j++){
+                if(!isValidElement(content[j])){
+                    boolean=1;
+                    break;
+                }
+            }
+            if(boolean){
+                loop+=32;
+                continue;
+            }
+            int k;
+            int tempLong = -1;
+
+            char attr = content[loop+11];
+            if((attr&0x10)==0){
+                // it's a file, should only print
+                for(k=0; k<11; k++){
+                    if(content[loop+k]!=' '){
+                        tempLong++;
+                        tempName[tempLong] = content[loop+k];
+                    }else{
+                        tempLong++;
+                        tempName[tempLong] = '.';
+                        while(content[loop+k]==' '){
+                            k++;
+                        }
+                        k--;
+                    }
+                }
+                printf("%s  ", tempName);
+            } else{
+                // it's a dir, save it and print it
+                for(k=0; k<11; k++){
+                    if(content[loop+k]!=' '){
+                        tempLong++;
+                        tempName[tempLong] = content[loop+k];
+                    }else{
+                        break;
+                    }
+                }
+                char * tosave = (char*)malloc(12);
+                strcpy(tosave, tempName);
+                char calclus[2] = {};
+                for(int a=0; a < 2; a++){
+                    calclus[a] = content[loop+26+a];
+                }
+                subclus[dictind] = 256 * (int)calclus[1] + (int)calclus[0];
+                subdirs[dictind] = tosave;
+                dictind++;
+                //red print here!!!!!!!!!!!!!!!!
+                printf("%s  ", tempName);
+            }
+            loop+=32;
+        }
+        free(str);
+        currentClus = val;
+    }
+    printf("\n");
+    for(int i=0; i<dictind; i++){
+        char firstline[128] = {};
+        strcpy(firstline, parent);
+        int parentlen = strlen(firstline);
+        char * tempsub = subdirs[i];
+        int n=0;
+        for(; tempsub[n] != '\0'; n++){
+            firstline[n+parentlen] = tempsub[n];
+        }
+        firstline[n+parentlen] = '/';
+        printRecurse(subclus[i], FAT12, firstline);
+    }
+
+    for(int i=0; i<dictind; i++){
+        char * f = subdirs[i];
+        free(f);
+    }
+
+    return;
 }
+
+// should check if the file is a dir
+void handleLs(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr){
+
+    int noFilenameInput = 0;
+    if(strcmp(filename, "/")==0){
+        noFilenameInput = 1;
+    }
+    char firstline[128] = {};
+
+    if(noFilenameInput || (filename[0]=='.'&&filename[1]=='\0')){
+        firstline[0] = '/';
+        noFilenameInput = 1; // if input .
+        printf("/:\n");
+    }
+    else{
+        //three kinds -> ./nju/blabla, nju/blabla, /nju/blabla
+        if(filename[0] == '.'){
+            int i=0;
+            for(int j=1; filename[j] != '\0'; j++, i++){
+                firstline[i] = filename[j];
+            }
+            firstline[i] = '/';
+        }
+        else if(filename[0] != '/'){
+            firstline[0] = '/';
+            int i=1;
+            for(int j=0; filename[j]!='\0'; j++){
+                firstline[i] = filename[j];
+                i++;
+            }
+            firstline[i] = '/';
+        }
+        else{
+            int i=0;
+            for(int j=0; filename[j]!='\0'; j++,i++){
+                firstline[i] = filename[j];
+            }
+            firstline[i] = '/';
+        }
+    }
+
+    
+    int t = 0; //this is used for cutting the input path
+    char * targetdirs[128] = {};
+    int level = 0;
+    for(int i=1; firstline[i] != '\0'; i++){
+        char * temptarget = (char*)malloc(12);
+        int j=0;
+        while(firstline[i] != '/'){
+            temptarget[j] = firstline[i];
+            i++; j++;
+        }
+        temptarget[j] = '\0';
+        targetdirs[level] = temptarget;
+        level++;
+    }
+
+    //the dirs variable store many with malloc var
+    //remember to free all of them after the printing
+    int dictIndex = 0;
+    char * dirs[224] = {};
+    int clus[224] = {};
+    int currentlevel = 0;
+
+    //start from root entry
+    int rootbase = RootEntBase;
+    char fname [12] = {};
+
+    //first seek out entries in the root level
+    for(int i = 0; i<RootEntCnt; i++, rootbase+=32){
+        fseek(fat12, rootbase, SEEK_SET);
+        fread(rootEntry_ptr, 1, 32, fat12);
+
+        if(rootEntry_ptr->DIR_Name[0]=='\0'){
+            continue;
+        }
+        int invalidName = 0;
+        for(int j=0; j<11; j++){
+            if(!isValidElement(rootEntry_ptr->DIR_Name[j])){
+                invalidName = 1;
+                break;
+            }
+        }
+        if(invalidName){
+            continue;
+        }
+        char * tempname = (char *)malloc(12);
+        int j = 0; int k=0;
+        for(;j<11 && rootEntry_ptr->DIR_Name[j]!=' '; j++, k++){
+            tempname[k] = rootEntry_ptr->DIR_Name[j];
+        }
+        if((rootEntry_ptr->DIR_Attr&0x10)!=0){
+            // is a dir, needs to be in the dict
+            tempname[k] = '\0';
+            dirs[dictIndex] = tempname;
+            clus[dictIndex] = rootEntry_ptr->DIR_FstClus;
+            dictIndex++;
+            if(noFilenameInput){
+                //print red here!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                printf("%s  ", tempname);
+            }
+        }
+        else{
+            if(noFilenameInput){
+                while(rootEntry_ptr->DIR_Name[j] == ' '){
+                    j++;
+                }
+                tempname[k] = '.'; k++;
+                for(;j < 11 && rootEntry_ptr->DIR_Name[j] != ' '; j++, k++){
+                    tempname[k] = rootEntry_ptr->DIR_Name[j];
+                }
+                printf("%s  ", tempname);
+            }
+            free(tempname);
+        }
+    }
+    if(noFilenameInput){
+        printf("\n");
+    }
+
+    if(noFilenameInput){
+        for(int n=0; n<dictIndex; n++){
+            char currentdir[12] = {};
+            strcpy(currentdir, dirs[n]);
+            char parampath[128] = {};
+            strcpy(parampath, firstline);
+            int pathlen = strlen(parampath);
+            int i=0;
+            for(; currentdir[i] != '\0'; i++){
+                parampath[i+pathlen] = currentdir[i];
+            }
+            parampath[i+pathlen] = '/';
+            printRecurse(clus[n], fat12, parampath);
+        }
+    }
+    else{
+        // start finding level by level
+        // dir stored in targetdirs
+        //dirs stores first level dir
+        //clus stores first level clus
+        //dictInd represent the size
+        int targetclus = -1;
+        for(int i=0; i<level; i++){
+            int pathexist = 0;
+            char currenttarget[12] = {};
+            strcpy(currenttarget, targetdirs[i]);
+            if(i == 0){
+                for(int n=0; n<dictIndex; n++){
+                    if(strcmp(currenttarget, dirs[n])==0){
+                        pathexist = 1;
+                        targetclus = clus[n];
+                        break;
+                    }
+                }
+            }else{
+                int database = DataBase;
+                int currentClus = targetclus;
+                int fatval = 0;
+                while(fatval < 0xFF8){
+                    fatval = getFATValue(fat12, currentClus);
+                    if(fatval == 0xFF7){
+                        printf("Encountered bad clus!\n");
+                        return;
+                    }
+                    char * str = (char*)malloc(SecPerClus*BytesPerSec);
+                    char * content = str;
+                    int startByte = database + (currentClus-2)*SecPerClus*BytesPerSec;
+                    fseek(fat12,startByte,SEEK_SET);
+                    fread(content, 1, SecPerClus*BytesPerSec, fat12);
+                    int count = SecPerClus*BytesPerSec;
+                    int loop=0;
+                    while(loop<count){
+                        int i;
+                        char tempName[12]={};
+                        if(content[loop]=='\0'){
+                            loop+=32;
+                            continue;
+                        }
+                        int invalidName = 0;
+                        for(int j=loop; j<loop+11; j++){
+                            char test = content[j];
+                            if(!isValidElement(content[j])){
+                                invalidName = 1;
+                                break;
+                            }
+                        }
+                        if(invalidName){
+                            loop+=32;
+                            continue;
+                        }
+                        //DIR_Attr offset is 12
+                        char attr = content[loop+11];
+                        if((attr&0x10)==0){
+                            // it's a file, should jump over
+                            loop+=32;
+                            continue;
+                        }
+                        else{
+                            int k;
+                            int tempLong = -1;
+                            for(k=0; k<11; k++){
+                                if(content[loop+k]!=' '){
+                                    tempLong++;
+                                    tempName[tempLong] = content[loop+k];
+                                } else{
+                                    tempLong++;
+                                    tempName[tempLong] = '\0';
+                                    break;
+                                }
+                            }
+                            if(strcmp(currenttarget, tempName)==0){
+                                pathexist = 1;
+                                char calclus[2] = {};
+                                for(int a=0; a < 2; a++){
+                                    calclus[a] = content[loop+26+a];
+                                }
+                                targetclus = 256 * (int)calclus[1] + (int)calclus[0];
+                                break;
+                            } else{
+                                loop+=32;
+                            }
+                        }
+                    }
+                    if(pathexist){
+                        break;
+                    } else{
+                        free(str);
+                        currentClus = fatval;
+                    }
+                }
+            }
+            if(!pathexist){
+                printf("Your input path %s doesn't exist!\n", firstline);
+                return;
+            }
+        }
+        //targetclus found
+        printRecurse(targetclus, fat12, firstline);
+    }
+
+    //remember to free the dictionary
+    for(int m=0; m<level; m++){
+        char * f = targetdirs[m];
+        free(f);
+    }
+    for(int m=0; m<dictIndex; m++){
+        char * f = dirs[m];
+        free(f);
+    }
+}
+
+
+//----------------------------------------------------------------------------------------------------
 
 // should check if the file is a dir
 void handleLsWithParam(const char * filename){

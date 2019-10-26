@@ -4,7 +4,7 @@
 //int startByte = dataBase + (currentClus - 2)*SecPerClus*BytsPerSec;
 // physical sector number = 33 + FAT entry number - 2
 
-char DEFAULT_PATH[] = {"defaultpath"};
+char DEFAULT_PATH[] = {"/"};
 
 int main(){
 
@@ -81,7 +81,7 @@ int main(){
         else if(strcmp(commandType, "ls")==0){
             //check if there are filepath and param
             if(param[0] == '\0'){
-                handleLs(filename);
+                handleLs(filename, FAT12, rootEntry_ptr);
             }
             else{
                 int validParam = 1;
