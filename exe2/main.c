@@ -100,32 +100,62 @@ int isValidElement(char c){
     }
 }
 
-int  getFATValue(FILE * fat12 , int num) {
-	int fatBase = ResvdSecCnt * BytesPerSec;
-	int fatPos = fatBase + num*3/2;
-	int type = 0;
-	if (num % 2 == 0) {
-		type = 0;
-	} else {
-		type = 1;
-	}
- 
-	b2 bytes;
-	b2* bytes_ptr = &bytes;
-	int check;
-	check = fseek(fat12,fatPos,SEEK_SET);
-	if (check == -1) 
-		printf("fseek in getFATValue failed!");
- 
-	check = fread(bytes_ptr,1,2,fat12);
-	if (check != 2)
-		printf("fread in getFATValue failed!");
- 
-	if (type == 0) {
-		return bytes<<4;
-	} else {
-		return bytes>>4;
-	}
+int  getFATValue(FILE * fat12 , int num, int forcat) {
+    if(!forcat){
+        int fatBase = ResvdSecCnt * BytesPerSec;
+        int fatPos = fatBase + num*3/2;
+        int type = 0;
+        if (num % 2 == 0) {
+            type = 0;
+        } else {
+            type = 1;
+        }
+    
+        b2 bytes;
+        b2* bytes_ptr = &bytes;
+        int check;
+        check = fseek(fat12,fatPos,SEEK_SET);
+        if (check == -1) 
+            printf("fseek in getFATValue failed!");
+    
+        check = fread(bytes_ptr,1,2,fat12);
+        if (check != 2)
+            printf("fread in getFATValue failed!");
+    
+        if (type == 0) {
+            return bytes<<4;
+        } else {
+            return bytes>>4;
+        }
+    }
+    else{
+        int fatBase = ResvdSecCnt * BytesPerSec;
+        int fatPos = fatBase + num*3/2;
+        int type = 0;
+        if (num % 2 == 0) {
+            type = 0;
+        } else {
+            type = 1;
+        }
+    
+        b2 bytes;
+        b2* bytes_ptr = &bytes;
+        int check;
+        check = fseek(fat12,fatPos,SEEK_SET);
+        if (check == -1) 
+            printf("fseek in getFATValue failed!");
+    
+        check = fread(bytes_ptr,1,2,fat12);
+        if (check != 2)
+            printf("fread in getFATValue failed!");
+    
+        if (type == 0) {
+            short correct = (bytes<<4);
+		    return correct>>4;
+        } else {
+            return bytes>>4;
+        }
+    }
 }
 
 void loadFAT12(FILE * FAT12, struct BPB * bpb_ptr){
@@ -274,7 +304,11 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
             int fatVal = 0;
             int tempDataBase = DataBase;
             while(fatVal < 0xFF8){
-                fatVal = getFATValue(fat12, currentClus);
+                if(currentClus < 0){
+                    printf("File not found!\n");
+                    return;
+                }
+                fatVal = getFATValue(fat12, currentClus, 0);
                 if(fatVal == 0xFF7){
                     printf("Reading encountered bad clus!\n");
                     return;
@@ -412,7 +446,11 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
     }
     int value = 0;
     while(value < 0xFF8){
-        value = getFATValue(fat12, currentClus);
+        if(currentClus < 0){
+            printf("File not found!\n");
+            return;
+        }
+        value = getFATValue(fat12, currentClus, 0);
         if(value == 0xFF7){
             printf("Encountered a bad clus!\n");
             return;
@@ -478,9 +516,43 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
 
 			loop += 32;
         }
+        currentClus = value;
     }
 
     // now having gotten the target file's startClus
+    currentClus = targetClus;
+    while (1) {
+		value = getFATValue(fat12,currentClus,1);
+		if (value == 0xFF7) {
+			break;
+		}
+
+
+		char* str = (char* )malloc(SecPerClus*BytesPerSec);	//暂存从簇中读出的数据
+		char* content = str;
+		
+		int startByte = DataBase + (currentClus - 2)*SecPerClus*BytesPerSec;
+		fseek(fat12,startByte,SEEK_SET);
+		fread(content,1,SecPerClus*BytesPerSec,fat12);
+				
+        char txt[513] = {};
+        int id = 0;
+        for(; id < 512 && content[id] != '\0'; id++){
+            txt[id] = content[id];
+        }
+        txt[id] = '\0';
+        printf("%s", txt);
+
+		free(str);
+		currentClus = value;
+
+		if(value>= 0xFF8){
+			break;
+		}
+    }
+
+
+/*
     char * str = (char *)malloc(SecPerClus*BytesPerSec);
     char * content = str;
     int physicalSecNo = 33 + targetClus - 2;
@@ -494,6 +566,7 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
     }
     txt[id] = '\0';
     printf("%s", txt);
+    */
 }
 
 //-----------------------------------------------------------------------------------
@@ -513,7 +586,7 @@ void printRecurse(int startclus, FILE * FAT12, char * parent){
     int currentClus = startclus;
     int val = 0;
     while(val < 0xFF8){
-        val = getFATValue(FAT12, currentClus);
+        val = getFATValue(FAT12, currentClus, 0);
         if(val == 0xFF7){
             printf("Encountered bad clus!\n");
             return;
@@ -776,7 +849,7 @@ void handleLs(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr){
                 int currentClus = targetclus;
                 int fatval = 0;
                 while(fatval < 0xFF8){
-                    fatval = getFATValue(fat12, currentClus);
+                    fatval = getFATValue(fat12, currentClus, 0);
                     if(fatval == 0xFF7){
                         printf("Encountered bad clus!\n");
                         return;
@@ -889,7 +962,7 @@ void printRecurseWithParam(int startClus, FILE * FAT12, char * parent){
     int currentClus = startClus;
     int val = 0;
     while(val < 0xFF8){
-        val = getFATValue(FAT12, currentClus);
+        val = getFATValue(FAT12, currentClus, 0);
         if(val == 0xFF7){
             printf("Encountered bad clus!\n");
             return;
@@ -974,7 +1047,7 @@ void printRecurseWithParam(int startClus, FILE * FAT12, char * parent){
                 int cc = subclus[dictind];
                 int fatval = 0;
                 while(fatval<0xFF8){
-                    fatval = getFATValue(FAT12, cc);
+                    fatval = getFATValue(FAT12, cc, 0);
                     if(fatval == 0xFF7){
                         printf("Encountered bad clus!\n");
                         return;
@@ -1176,7 +1249,7 @@ void handleLsWithParam(const char * filename, FILE * FAT12, struct DIR * rootEnt
             //file -> fileno[dictInd]
             int fatval = 0;
             while(fatval < 0xFF8){
-                fatval = getFATValue(FAT12, cc);
+                fatval = getFATValue(FAT12, cc, 0);
                 if(fatval == 0xFF7){
                     printf("Encountered bad clus!\n");
                     return;
@@ -1282,7 +1355,7 @@ void handleLsWithParam(const char * filename, FILE * FAT12, struct DIR * rootEnt
                 int currentClus = targetclus;
                 int fatval = 0;
                 while(fatval < 0xFF8){
-                    fatval = getFATValue(FAT12, currentClus);
+                    fatval = getFATValue(FAT12, currentClus, 0);
                     if(fatval == 0xFF7){
                         printf("Encountered bad clus!\n");
                         return;
