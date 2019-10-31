@@ -60,10 +60,165 @@ int  DataBase;
 
 void redprint(const char *, int);
 void defprint(const char *, int);
-void printLF();
 //--------------------------------------------------------------------------------------------
 
 char WARNING_INVALID_COMMAND[] = {"Command entered invalid!\n"};
+
+void invalidCmdWarning(const char * cmd);
+
+void invalidParamForLs(const char * param);
+
+void invalidFilename(const char * filename);
+
+int isFilenameHead(char c);
+
+//--------------------------------------------------------------------------------------------
+
+
+int isValidElement(char c);
+
+int  getFATValue(FILE * fat12 , int num, int forcat);
+
+void loadFAT12(FILE * FAT12, struct BPB * bpb_ptr);
+
+//-------------------------------------------------------------------------------
+
+// should check if the file is a dir
+void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr);
+
+//-----------------------------------------------------------------------------------
+
+
+void printRecurse(int startclus, FILE * FAT12, char * parent);
+
+// should check if the file is a dir
+void handleLs(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr);
+
+
+//----------------------------------------------------------------------------------------------------
+
+void printRecurseWithParam(int startClus, FILE * FAT12, char * parent);
+
+//----------------------------------------------------------------------------------------------------
+// should check if the file is a dir
+void handleLsWithParam(const char * filename, FILE * FAT12, struct DIR * rootEntry_ptr);
+//---------------------------------------------------------------------------------------------------
+
+
+char DEFAULT_PATH[] = {"/"};
+
+int main(){
+
+    // load img
+    FILE * FAT12;
+    FAT12 = fopen("a.img", "rb");
+    struct BPB bpb;
+    struct BPB * bpb_ptr = &bpb;
+    struct DIR rootEntry;
+    struct DIR * rootEntry_ptr = &rootEntry;
+
+    loadFAT12(FAT12, bpb_ptr);
+
+    char prompt[] = {"Please enter your command:\n"};
+    char input[128] = {};
+    //defprint(prompt,strlen(prompt));
+    printf("%s", prompt);
+    fgets(input, 127, stdin);
+    while(strcmp(input, "exit\n")!=0){
+        //use another variable to hold input, which makes code more understandable
+        char command[128];
+        char filename[128] = {};
+        char param[128] = {};
+        strcpy(command, input);
+
+        //pre-process the input, and detect undefined command
+        //also filter out the filename, either explicit or default
+        char commandType[4] = {'\0','\0','\0','\0'};
+        int i = 0;
+        for(; command[i] != ' ' && command[i] != '\n' && i < 4; i++){
+            commandType[i] = command[i];
+        }
+
+        // in case user inputs multiple space
+        while(command[i] == ' '){
+            i++;
+        }
+        for(int j = 0; command[i] != ' ' 
+            && command[i] != '\n' && command[i] != '-'; i++, j++){
+                if(j == 0 && isFilenameHead(command[i])){
+                    filename[j] = command[i];
+                }
+                else{
+                    filename[j] = command[i];
+                }
+            }
+        if(filename[0] == '\0'){
+            strcpy(filename, DEFAULT_PATH);
+        }
+
+        //finally check if there is param -l...
+        while(command[i] == ' '){
+            i++;
+        }
+        for(int j = 0; command[i] != '\n'; i++, j++){
+            param[j] = command[i];
+        }
+
+        if(commandType[3] != '\0'){
+            //since max length of main command is 3 -> cat
+            invalidCmdWarning(command);
+            printf("%s", prompt);
+            fgets(input, 1023, stdin);
+            continue;
+        }
+
+        if(strcmp(commandType, "cat")==0){
+            if(strcmp(filename, DEFAULT_PATH)==0){
+                printf("Please enter a file name!\n");
+            }
+            else{
+                handleCat(filename, FAT12, rootEntry_ptr);
+            }
+        }
+        else if(strcmp(commandType, "ls")==0){
+            //check if there are filepath and param
+            if(param[0] == '\0'){
+                handleLs(filename, FAT12, rootEntry_ptr);
+            }
+            else{
+                int validParam = 1;
+                //ensure that the heading part is correct
+                if(param[0] == '-' && param[1] == 'l'){
+                    for(int k = 2; param[k] != '\0'; k++){
+                        char c = param[k];
+                        if(c!='-' && c!='l' && c!=' '){
+                            validParam = 0;
+                            break;
+                        }
+                    }
+                }
+                else{
+                    validParam = 0;
+                }
+
+                if(!validParam){
+                    invalidParamForLs(param);
+                }
+                else{
+                    handleLsWithParam(filename, FAT12, rootEntry_ptr);
+                }
+            }
+        }
+        else{
+            invalidCmdWarning(command);
+        }
+
+        printf("%s", prompt);
+        fgets(input, 127, stdin);
+    }
+
+    return 0;
+}
 
 void invalidCmdWarning(const char * cmd){
     printf("%s",WARNING_INVALID_COMMAND);
@@ -217,7 +372,7 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
     while(1){
 
         if(!fileFound){
-            printf("File not found! Please enter a valid file path!\n");
+            printf("File not found!\n");
             return;
         }
 
@@ -382,7 +537,20 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
         strcpy(currentpath, restpath);
     }
     // having gotten the target file name
-    //start the last round seeking
+    int hasExt = 0;
+    for(int test=0;targetfile[test]!='\0';test++){
+        if(targetfile[test]=='.'){
+            hasExt = 1;
+        }
+    }
+    if(!hasExt){
+        printf("Please indicate a common file, not directory!\n");
+        return;
+    }   
+
+    int readableFileFound = 0;
+
+    //start the last round seeking - find out the file's startClus
     if(isFirstLevel){
         // file in the root dir
         int base = (ResvdSecCnt+NumFATs*FATSz)*BytesPerSec;
@@ -429,6 +597,7 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
 			fname[tempLong] = '\0';
 
             if(strcmp(targetfile, fname)==0){
+                readableFileFound = 1;
                 targetClus = rootEntry_ptr->DIR_FstClus;
                 startClus = targetClus;
                 currentClus = startClus;
@@ -445,7 +614,7 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
         currentClus = startClus;
     }
     int value = 0;
-    while(value < 0xFF8){
+    while(value < 0xFF8 && !isFirstLevel){
         if(currentClus < 0){
             printf("File not found!\n");
             return;
@@ -511,6 +680,10 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
                     calclus[a] = content[loop+26+a];
                 }
                 targetClus = 256 * (int)calclus[1] + (int)calclus[0];
+                char attr = content[loop+11];
+                if((attr&0x10)==0){
+                    readableFileFound = 1;
+                }
                 break;
             }
 
@@ -518,15 +691,19 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
         }
         currentClus = value;
     }
-
     // now having gotten the target file's startClus
     currentClus = targetClus;
+
+    if(!readableFileFound){
+        printf("File not found!\n");
+        return;
+    }
+
     while (1) {
 		value = getFATValue(fat12,currentClus,1);
 		if (value == 0xFF7) {
 			break;
 		}
-
 
 		char* str = (char* )malloc(SecPerClus*BytesPerSec);	//暂存从簇中读出的数据
 		char* content = str;
@@ -546,7 +723,7 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
 		free(str);
 		currentClus = value;
 
-		if(value>= 0xFF8){
+		if(value>= 0xFF8 || currentClus < 0){
 			break;
 		}
     }
@@ -575,7 +752,8 @@ void handleCat(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr)
 void printRecurse(int startclus, FILE * FAT12, char * parent){
     printf("%s:\n",parent);
     //red here!!!!!!!!!!!!!!!!!!!!!!!
-    printf(".  ..  ");
+    printf("\033[31m.  ..  \033[0;0m");
+    //defprint("\033[31m.  ..  ",13);
 
     //as in handleLs, create arr to store dirs and clus
     int dictind = 0;
@@ -659,7 +837,9 @@ void printRecurse(int startclus, FILE * FAT12, char * parent){
                 //redprint(tempName, strlen(tempName));
                 //defprint("  ", 2);
                 //red print here!!!!!!!!!!!!!!!!
+                printf("\033[31m");
                 printf("%s  ", tempName);
+                printf("\033[0;0m");
             }
             loop+=32;
         }
@@ -789,7 +969,9 @@ void handleLs(const char * filename, FILE * fat12 , struct DIR * rootEntry_ptr){
                 //redprint(tempname, strlen(tempname));
                 //defprint("  ",2);
                 //print red here!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                printf("\033[31m");
                 printf("%s  ", tempname);
+                printf("\033[0;0m");
             }
         }
         else{
@@ -1107,15 +1289,27 @@ void printRecurseWithParam(int startClus, FILE * FAT12, char * parent){
     //fdictind
     //subfiles
     //subfilesize
+    //printf("\033[31m");
+    printf("%s",parent);
+    //printf("\033[0;0m");
 
-    printf("%s %d %d:\n", parent, dictind, fdictind);
+    printf(" %d %d:\n", dictind, fdictind);
+
+    printf("\033[31m");
     printf(".\n..\n"); //red!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    printf("\033[0;0m");
+    
 
     for(int i=0; i<fdictind; i++){
         printf("%s  %d\n",subfiles[i],subfilesize[i]);
     }
     for(int i=0; i<dictind; i++){
-        printf("%s  %d %d\n", subdirs[i], subdir_subdirno[i], subdir_subfileno[i]);
+
+        printf("\033[31m");
+        printf("%s",subdirs[i]);
+        printf("\033[0;0m");
+
+        printf("  %d %d\n", subdir_subdirno[i], subdir_subfileno[i]);
     }
     printf("\n");
     for(int i=0; i<dictind; i++){
@@ -1311,7 +1505,10 @@ void handleLsWithParam(const char * filename, FILE * FAT12, struct DIR * rootEnt
         printf("/ %d %d:\n", dictIndex, fdictIndex);
         //red print!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         for(int i=0; i<dictIndex; i++){
-            printf("%s  %d %d\n",dirs[i], dirno[i], fileno[i]);
+            //printf("\033[31m");
+            printf("%s",dirs[i]);
+            //printf("\033[0;0m");
+            printf("  %d %d\n", dirno[i], fileno[i]);
         }
         for(int i=0; i<fdictIndex; i++){
             printf("%s  %d\n",files[i],sizes[i]);
@@ -1437,118 +1634,3 @@ void handleLsWithParam(const char * filename, FILE * FAT12, struct DIR * rootEnt
     }
 }
 //---------------------------------------------------------------------------------------------------
-
-
-char DEFAULT_PATH[] = {"/"};
-
-int main(){
-
-    // load img
-    FILE * FAT12;
-    FAT12 = fopen("a.img", "rb");
-    struct BPB bpb;
-    struct BPB * bpb_ptr = &bpb;
-    struct DIR rootEntry;
-    struct DIR * rootEntry_ptr = &rootEntry;
-
-    loadFAT12(FAT12, bpb_ptr);
-
-    char prompt[] = {"Please enter your command:\n"};
-    char input[128];
-    printf("%s", prompt);
-    fgets(input, 127, stdin);
-    while(strcmp(input, "exit\n")!=0){
-        //use another variable to hold input, which makes code more understandable
-        char command[128];
-        char filename[128] = {};
-        char param[128] = {};
-        strcpy(command, input);
-
-        //pre-process the input, and detect undefined command
-        //also filter out the filename, either explicit or default
-        char commandType[4] = {'\0','\0','\0','\0'};
-        int i = 0;
-        for(; command[i] != ' ' && command[i] != '\n' && i < 4; i++){
-            commandType[i] = command[i];
-        }
-
-        // in case user inputs multiple space
-        while(command[i] == ' '){
-            i++;
-        }
-        for(int j = 0; command[i] != ' ' 
-            && command[i] != '\n' && command[i] != '-'; i++, j++){
-                if(j == 0 && isFilenameHead(command[i])){
-                    filename[j] = command[i];
-                }
-                else{
-                    filename[j] = command[i];
-                }
-            }
-        if(filename[0] == '\0'){
-            strcpy(filename, DEFAULT_PATH);
-        }
-
-        //finally check if there is param -l...
-        while(command[i] == ' '){
-            i++;
-        }
-        for(int j = 0; command[i] != '\n'; i++, j++){
-            param[j] = command[i];
-        }
-
-        if(commandType[3] != '\0'){
-            //since max length of main command is 3 -> cat
-            invalidCmdWarning(command);
-            printf("%s", prompt);
-            fgets(input, 1023, stdin);
-            continue;
-        }
-
-        if(strcmp(commandType, "cat")==0){
-            if(strcmp(filename, DEFAULT_PATH)==0){
-                printf("Please enter a file name!\n");
-            }
-            else{
-                handleCat(filename, FAT12, rootEntry_ptr);
-            }
-        }
-        else if(strcmp(commandType, "ls")==0){
-            //check if there are filepath and param
-            if(param[0] == '\0'){
-                handleLs(filename, FAT12, rootEntry_ptr);
-            }
-            else{
-                int validParam = 1;
-                //ensure that the heading part is correct
-                if(param[0] == '-' && param[1] == 'l'){
-                    for(int k = 2; param[k] != '\0'; k++){
-                        char c = param[k];
-                        if(c!='-' && c!='l' && c!=' '){
-                            validParam = 0;
-                            break;
-                        }
-                    }
-                }
-                else{
-                    validParam = 0;
-                }
-
-                if(!validParam){
-                    invalidParamForLs(param);
-                }
-                else{
-                    handleLsWithParam(filename, FAT12, rootEntry_ptr);
-                }
-            }
-        }
-        else{
-            invalidCmdWarning(command);
-        }
-
-        printf("%s", prompt);
-        fgets(input, 127, stdin);
-    }
-
-    return 0;
-}
