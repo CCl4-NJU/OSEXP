@@ -1202,8 +1202,20 @@ void printRecurseWithParam(int startClus, FILE * FAT12, char * parent){
                     calclus[a] = content[loop+28+a];
                 }
                 subfiles[fdictind] = tosave;
-                subfilesize[fdictind] = (long)(16777216*(int)calclus[3] 
-                    + 65536*(int)calclus[2] + 256*(int)calclus[1] + (int)calclus[0]);
+                long sixteen = 1;
+                for(int jj=0; jj < 4; jj++, sixteen *= 16){
+                    unsigned int factor = 0;
+                    int tempCalclus = calclus[jj];
+                    int two = 1;
+                    for(int ii = 0; ii < 8; ii++){
+                        factor += ((tempCalclus & 1) * two);
+                        two *= 2;
+                        tempCalclus = tempCalclus >> 1;
+                    }
+                    subfilesize[fdictind] = subfilesize[fdictind] + sixteen * factor;
+                }
+                //subfilesize[fdictind] = (long)(16777216*(int)calclus[3] 
+                //    + 65536*(int)calclus[2] + 256*(int)calclus[1] + (int)calclus[0]);
                 fdictind++;
             } else{
                 // it's a dir, save its name, clus, subdirno and subfileno
