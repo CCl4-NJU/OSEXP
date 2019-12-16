@@ -1313,7 +1313,7 @@ void printRecurseWithParam(int startClus, FILE * FAT12, char * parent){
     
 
     for(int i=0; i<fdictind; i++){
-        printf("%s  %d\n",subfiles[i],subfilesize[i]);
+        printf("%s  %ld\n",subfiles[i],subfilesize[i]);
     }
     for(int i=0; i<dictind; i++){
 
@@ -1523,7 +1523,7 @@ void handleLsWithParam(const char * filename, FILE * FAT12, struct DIR * rootEnt
             printf("  %d %d\n", dirno[i], fileno[i]);
         }
         for(int i=0; i<fdictIndex; i++){
-            printf("%s  %d\n",files[i],sizes[i]);
+            printf("%s  %ld\n",files[i],sizes[i]);
         }
         printf("\n");
         for(int n=0; n<dictIndex; n++){

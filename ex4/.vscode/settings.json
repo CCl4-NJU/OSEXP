@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "proc.h": "c",
+        "type.h": "c",
+        "const.h": "c",
+        "protect.h": "c",
+        "proto.h": "c",
+        "global.h": "c"
+    }
+}
