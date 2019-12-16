@@ -59,6 +59,9 @@ bo :
 test :
 	realclean image bo
 
+run :
+	realclean image bo
+
 # We assume that "a.img" exists in current folder
 buildimg :
 	dd if=boot/boot.bin of=a.img bs=512 count=1 conv=notrunc

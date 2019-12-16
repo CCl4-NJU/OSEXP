@@ -53,3 +53,6 @@ int consider_hungry;
 int hungry_gap; //hungry gap value, it's the subtraction between
 //the max executed_times and min executed_times
 int already_round;
+SEMAPHORE hungry_sem;
+
+SEMAPHORE op_sem;

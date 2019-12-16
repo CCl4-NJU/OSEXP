@@ -136,12 +136,13 @@ PUBLIC void schedule(){
 
 		PROCESS* ready[6];
 		int ready_num=0;
-
+/*
 //======================= hungry schedule part ==============================
 		if(consider_hungry!=1){
 			goto NORMAL_SCHED;
 		}
 		else{
+
 			if(already_round!=1){
 				goto NORMAL_SCHED;
 			}
@@ -216,7 +217,7 @@ PUBLIC void schedule(){
 				}
 			}
 		}
-
+		*/
 //===========================================================================
 NORMAL_SCHED:
 		//for_writer_first is used for 'hiding' the existence of writer first
@@ -329,11 +330,11 @@ PUBLIC void sys_p(void* s){
 	//if(p_proc_ready->is_reader==0){
 	//	is_writing_now=1;
 	//}
-	sem->sem_num--;
+	sem->sem_num=sem->sem_num-1;
 
 	if(sem->sem_num<0){
 		//this means no enough resources, and the abs(num) indicates waiting num
-		int chosen_restore_index=(-sem->sem_num)-1;
+		int chosen_restore_index=-(sem->sem_num)-1;
 		p_proc_ready->rejected=1;
 		//add the rejected process into the waiting queue
 		sem->queue[chosen_restore_index]=p_proc_ready;
@@ -352,12 +353,12 @@ PUBLIC void sys_v(void* s){
 	//if(p_proc_ready->is_reader==0){
 	//	is_writing_now=0;
 	//}
-	sem->sem_num++;
+	sem->sem_num=sem->sem_num+1;
 
 	if(sem->sem_num<=0){
 		//we need to reset the rejected val of the first waiting pro in queue
 		if(is_reader_first==1){
-			int q_size=(-sem->sem_num)+1;
+			int q_size=-(sem->sem_num)+1;
 			for(int i=0;i<q_size;i++){
 				if(sem->queue[i]->is_reader==1){
 					//if it's reader first, consider recovering reader process
@@ -379,7 +380,7 @@ PUBLIC void sys_v(void* s){
 			}
 		}
 		else{
-			int q_size=(-sem->sem_num)+1;
+			int q_size=-(sem->sem_num)+1;
 			for(int i=0;i<q_size;i++){
 				int has_dequeue=0;
 				if(sem->queue[i]->is_reader==0){

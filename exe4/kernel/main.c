@@ -111,12 +111,15 @@ PUBLIC int kernel_main()
 
 	//!!!these are the var that can change
 	is_reader_first=0; //change here to switch mode
-	count_read=2;  		 //change here to switch numb
-	consider_hungry=0;
-	hungry_gap=3;
+	count_read=3;  		 //change here to switch numb
+	consider_hungry=1;
+	hungry_gap=10;
 
 	already_round=0; //hungry val for writer first
 	
+	hungry_sem.sem_num=0; //used for limit prior process
+	op_sem.sem_num=1;
+
 	//semaphore used for read and write
 	read_sem.sem_num=count_read;
 	write_sem.sem_num=1;
@@ -164,11 +167,23 @@ void all_process_asleep()
 	}
 }
 
-int delay_time=2500;
+int delay_time=1000;
 
 void A(){
 	//process_sleep(5000);
 	while(1){
+
+		if(count_read==1){
+			p(&op_sem);
+		}
+
+		if(consider_hungry==1&&is_reader_first==1){
+			if(p_proc_current->executed_times>hungry_gap){
+				p(&hungry_sem);
+				p_proc_current->executed_times=0;
+			}
+		}
+
 		if(is_reader_first==0){
 			if(write_sem.sem_num<0){
 				continue;
@@ -211,12 +226,33 @@ RUNA:
 			//when there's no more readers, i can finally let go
 			v(&write_sem);
 		}
+
+		if(consider_hungry==1&&is_reader_first==0){
+			if(already_round==1&&hungry_sem.sem_num<0){
+				v(&hungry_sem);
+			}
+		}
+
+		if(count_read==1){
+			v(&op_sem);
+		}
 	}
 }
 
 void B(){
 	//process_sleep(5000);
 	while(1){
+
+		if(count_read==1){
+			p(&op_sem);
+		}
+		if(consider_hungry==1&&is_reader_first==1){
+			if(p_proc_current->executed_times>hungry_gap){
+				p(&hungry_sem);
+				p_proc_current->executed_times=0;
+			}
+		}
+
 		if(is_reader_first==0){
 			if(write_sem.sem_num<0){
 				continue;
@@ -256,12 +292,33 @@ RUNB:
 		if(read_sem.sem_num==count_read){
 			v(&write_sem);
 		}
+
+		if(consider_hungry==1&&is_reader_first==0){
+			if(already_round==1&&hungry_sem.sem_num<0){
+				v(&hungry_sem);
+			}
+		}
+
+		if(count_read==1){
+			v(&op_sem);
+		}
 	}
 }
 
 void C(){
 	//process_sleep(5000);
 	while(1){
+
+		if(count_read==1){
+			p(&op_sem);
+		}
+		if(consider_hungry==1&&is_reader_first==1){
+			if(p_proc_current->executed_times>hungry_gap){
+				p(&hungry_sem);
+				p_proc_current->executed_times=0;
+			}
+		}
+
 		if(is_reader_first==0){
 			if(write_sem.sem_num<0){
 				continue;
@@ -301,12 +358,35 @@ RUNC:
 		if(read_sem.sem_num==count_read){
 			v(&write_sem);
 		}
+
+		if(consider_hungry==1&&is_reader_first==0){
+			if(already_round==1&&hungry_sem.sem_num<0){
+				v(&hungry_sem);
+			}
+		}
+
+		if(count_read==1){
+			v(&op_sem);
+		}
 	}
 }
 
 void D(){
 	//process_sleep(5000);
 	while(1){
+
+		if(count_read==1){
+			p(&op_sem);
+		}
+		if(consider_hungry==1&&is_reader_first==0){
+			//readers are the hungry ones
+			//should reject writer's opportunity
+			if(already_round==1&&p_proc_current->executed_times>hungry_gap){
+				p(&hungry_sem);
+				p_proc_current->executed_times=0;
+			}
+		}
+
 		p(&write_sem);
 		
 		my_print_color("WD S    ");
@@ -326,12 +406,36 @@ void D(){
 		//milli_delay(delay_time);
 
 		v(&write_sem);
+
+		if(consider_hungry==1&&is_reader_first==1){
+			//if reader first, let the hungry process to release sem
+			if(hungry_sem.sem_num<0){
+				v(&hungry_sem);
+			}
+		}
+
+		if(count_read==1){
+			v(&op_sem);
+		}
 	}
 }
 
 void E(){
 	//process_sleep(5000);
 	while(1){
+
+		if(count_read==1){
+			p(&op_sem);
+		}
+		if(consider_hungry==1&&is_reader_first==0){
+			//readers are the hungry ones
+			//should reject writer's opportunity
+			if(already_round==1&&p_proc_current->executed_times>hungry_gap){
+				p(&hungry_sem);
+				p_proc_current->executed_times=0;
+			}
+		}
+
 		p(&write_sem);
 
 		my_print_color("WE S    ");
@@ -351,6 +455,17 @@ void E(){
 		//milli_delay(delay_time);
 
 		v(&write_sem);
+
+		if(consider_hungry==1&&is_reader_first==1){
+			//if reader first, let the hungry process to release sem
+			if(hungry_sem.sem_num<0){
+				v(&hungry_sem);
+			}
+		}
+
+		if(count_read==1){
+			v(&op_sem);
+		}
 	}
 }
 void F(){
