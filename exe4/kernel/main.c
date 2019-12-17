@@ -111,8 +111,8 @@ PUBLIC int kernel_main()
 
 	//!!!these are the var that can change
 	is_reader_first=0; //change here to switch mode
-	count_read=3;  		 //change here to switch numb
-	consider_hungry=1;
+	count_read=2;  		 //change here to switch numb
+	consider_hungry=0;
 	hungry_gap=10;
 
 	already_round=0; //hungry val for writer first
@@ -129,7 +129,7 @@ PUBLIC int kernel_main()
 	f_turn=0; is_writing_now=0; //flag to show if it's writing
 
 	//when all process is asleep, set to 1
-	all_asleep=0;
+	all_asleep=0; if(is_reader_first==1&&consider_hungry==1&&count_read!=1){is_reader_first=0;}
 
         /* 初始化 8253 PIT */
         out_byte(TIMER_MODE, RATE_GENERATOR);
@@ -156,6 +156,9 @@ void my_print_color(char* str){
 /*======================================================================*
 						my code
  *======================================================================*/
+
+int delay_time=3000;
+
 //this is called when all readers and writers are asleep
 void all_process_asleep()
 {
@@ -166,8 +169,6 @@ void all_process_asleep()
 		}
 	}
 }
-
-int delay_time=1000;
 
 void A(){
 	//process_sleep(5000);
